@@ -29,7 +29,7 @@ Word Counts
     
 All Words
   - GET /documents/allwords: Get word counts for each word.
-  - 
+   
 Nearby Words
   - GET /documents/nearby-words/{word}: Get words near the specified word.
 
