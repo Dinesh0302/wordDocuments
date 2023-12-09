@@ -33,21 +33,6 @@ All Words
 Nearby Words
   - GET /documents/nearby-words/{word}: Get words near the specified word.
 
-    
-## Setup
-
-Provide instructions on setting up the project locally. Include details on dependencies, configuration files, and any other necessary steps.
-
-```bash
-# Clone the repository
-git clone https://github.com/your-username/word-tag-cloud-service.git
-
-# Navigate to the project directory
-cd word-tag-cloud-service
-
-# Build and run the application
-mvn spring-boot:run
-
 ## Authors
 - Dinesh Suvarna
 - dineshsuvarna0302@gmail.com
