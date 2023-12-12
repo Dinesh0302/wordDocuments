@@ -1,6 +1,7 @@
 package com.wordTagCloudService.wordDocuments.controller;
 
 import com.wordTagCloudService.wordDocuments.service.DocumentService;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.web.bind.annotation.*;
@@ -8,8 +9,6 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -19,12 +18,10 @@ import java.util.concurrent.ConcurrentMap;
 public class DocumentController {
 
     private final RedisTemplate<String, Integer> redisTemplate;
-    private final ConcurrentMap<String, Integer> wordCounts = new ConcurrentHashMap<>();
 
     private final DocumentService documentService;
 
-    private final Map<String, MultipartFile> uploadedFiles = new HashMap<>();
-    Map<String, Integer> wordCountMap = new HashMap<>();
+    Map<String, Integer> wordCountMap = new ConcurrentHashMap<>();
 
     @Autowired
     public DocumentController(RedisTemplate<String, Integer> redisTemplate, DocumentService documentService) {
@@ -32,8 +29,6 @@ public class DocumentController {
         this.documentService = documentService;
     }
 
-    int n=0;
-    int l=0;
     @PostMapping("/add")
     public String addDocuments(@RequestParam("files") MultipartFile[] files) throws IOException {
 
@@ -41,24 +36,17 @@ public class DocumentController {
         try{
         for (MultipartFile file : files) {
             String fileName = file.getOriginalFilename();
-            System.out.println(fileName);
 
             if (redisTemplate.hasKey(fileName)) {
                 processedFiles.append("File ").append(fileName).append(" already exists.\n");
                 continue;
             } else {
-                n++;
-                wordCountMap = documentService.WordCountFreuiency(file, l);
-                System.out.println("value of n is ----------" + n);
+                wordCountMap = documentService.WordCountFreuiency(file);
             }
 
             int wordCount = documentService.calculateWordCount(file); // Pass the MultipartFile directly
-            // Store word count in Redis-------------------
+            // Store word count in Redis-------------------// also we can store just in Hashmap
             redisTemplate.opsForValue().set(fileName, wordCount);
-
-            uploadedFiles.put(fileName, file);// not needed now
-            System.out.println(uploadedFiles);
-
             processedFiles.append(fileName).append("\n");
         }
         }
@@ -71,11 +59,15 @@ public class DocumentController {
 
     @GetMapping("/word-counts")
     public Map<String, Integer> getWordCounts() {
-        Map<String, Integer> wordCounts = new HashMap<>();
-        redisTemplate.keys("*").forEach(key -> {
-            Integer wordCount = redisTemplate.opsForValue().get(key);
-            wordCounts.put(key, wordCount);
-        });
+        ConcurrentMap<String, Integer> wordCounts = new ConcurrentHashMap<>();
+        try {
+            redisTemplate.keys("*").forEach(key -> {
+                Integer wordCount = redisTemplate.opsForValue().get(key);
+                wordCounts.put(key, wordCount);
+            });
+        }catch (Exception e) {
+            e.printStackTrace();
+        }
         return wordCounts;
     }
 
@@ -86,25 +78,28 @@ public class DocumentController {
 
     @GetMapping("/nearby-words/{word}")
     public Map<String, Integer> getNearbyWords(@PathVariable String word) {
-        Map<String, Integer> nearbyWords = new HashMap<>();
-
-        // Assuming wordCountMap is populated with word frequencies
-        for (Map.Entry<String, Integer> entry : wordCountMap.entrySet()) {
-            String currentWord = entry.getKey();
-            int count = entry.getValue();
-
-            // Check if the current word is near the target word (using a simple distance of 1)
-            if (isNearby(word, currentWord)) {
-                nearbyWords.put(currentWord, count);
+        Map<String, Integer> nearbyWords = new ConcurrentHashMap<>();
+        try {
+            for (Map.Entry<String, Integer> entry : wordCountMap.entrySet()) {
+                String currentWord = entry.getKey();
+                int count = entry.getValue();
+                // Check if the current word is similar to the target word
+                if (isSimilarWord(word, currentWord) && !currentWord.equals(word) || currentWord.equals(word)) {
+                    nearbyWords.put(currentWord, count);
+                }
             }
+        }catch (Exception e) {
+            e.printStackTrace();
         }
 
-        return nearbyWords;
+        return documentService.sortByValueDescending(nearbyWords);
     }
 
-    // isNearby method to check if two words are nearby (using a distance of 1)
-    private boolean isNearby(String targetWord, String currentWord) {
-        return Math.abs(targetWord.length() - currentWord.length()) <= 1;
+    private boolean isSimilarWord(String target, String current) {
+        int distance = StringUtils.getLevenshteinDistance(target.toLowerCase(), current.toLowerCase());
+        // Adjust the threshold as needed, for example, 50% similarity (take 50 to 75% for better result)
+        double similarityThreshold = 0.50;
+        double similarity = 1.0 - ((double) distance / Math.max(target.length(), current.length()));
+        return similarity >= similarityThreshold;
     }
-
 }
